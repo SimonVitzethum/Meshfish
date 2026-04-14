@@ -14,4 +14,4 @@
 >- [ ] Sampler Feedback
 
 
-This template is available under the TASL license. Feel free to learn from it and incorporate it in your own projects.
+This mod is available under the TASL license. Feel free to learn from it and incorporate it in your own projects.
