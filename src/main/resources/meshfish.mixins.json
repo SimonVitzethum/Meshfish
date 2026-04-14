@@ -1,6 +1,6 @@
 {
 	"required": true,
-	"package": "name.modid.mixin",
+	"package": "com.modfish.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"mixins": [],
 	"injectors": {

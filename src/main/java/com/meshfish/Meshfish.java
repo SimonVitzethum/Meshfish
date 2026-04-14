@@ -1,4 +1,4 @@
-package name.modid;
+package com.meshfish;
 
 import net.fabricmc.api.ModInitializer;
 

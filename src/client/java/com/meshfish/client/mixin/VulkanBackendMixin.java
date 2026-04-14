@@ -1,4 +1,4 @@
-package name.modid.client.mixin;
+package com.meshfish.client.mixin;
 
 import com.mojang.blaze3d.shaders.GpuDebugOptions;
 import com.mojang.blaze3d.shaders.ShaderSource;

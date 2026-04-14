@@ -1,4 +1,4 @@
-package name.modid.client;
+package com.meshfish.client;
 
 import net.fabricmc.api.ClientModInitializer;
 
