@@ -12,6 +12,7 @@ import org.lwjgl.vulkan.EXTMeshShader;
 import org.lwjgl.vulkan.NVMeshShader;
 import org.lwjgl.vulkan.VK11;
 import org.lwjgl.vulkan.VK12;
+import org.lwjgl.vulkan.KHRDynamicRendering;
 import org.lwjgl.vulkan.VkPhysicalDevice;
 import org.lwjgl.vulkan.VkPhysicalDeviceFeatures2;
 import org.lwjgl.vulkan.VkPhysicalDeviceProperties;
@@ -46,6 +47,28 @@ public class VulkanBackendMixin {
         } else if (physicalDevice.hasDeviceExtension("VK_NV_mesh_shader")) {
             extensions.add("VK_NV_mesh_shader");
         }
+
+        if (physicalDevice.hasDeviceExtension("VK_KHR_synchronization2")) {
+            extensions.add("VK_KHR_synchronization2");
+        }
+        if (physicalDevice.hasDeviceExtension("VK_KHR_dynamic_rendering")) {
+            extensions.add("VK_KHR_dynamic_rendering");
+        }
+
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            VkPhysicalDeviceProperties props = VkPhysicalDeviceProperties.calloc(stack);
+            VK11.vkGetPhysicalDeviceProperties(physicalDevice.vkPhysicalDevice(), props);
+            int apiVersion = props.apiVersion();
+
+            if (apiVersion < VK12.VK_API_VERSION_1_2) {
+                if (physicalDevice.hasDeviceExtension("VK_KHR_buffer_device_address")) {
+                    extensions.add("VK_KHR_buffer_device_address");
+                }
+                if (physicalDevice.hasDeviceExtension("VK_KHR_descriptor_indexing")) {
+                    extensions.add("VK_KHR_descriptor_indexing");
+                }
+            }
+        }
     }
 
     @Inject(
@@ -59,70 +82,36 @@ public class VulkanBackendMixin {
     )
     private void injectMeshShaderFeatures(Collection<String> extensions, VulkanPhysicalDevice physicalDevice, CallbackInfoReturnable<org.lwjgl.vulkan.VkDevice> cir, MemoryStack stack, VkPhysicalDeviceFeatures2 features2) {
         // Query the physical device properties to get API version
-        org.lwjgl.vulkan.VkPhysicalDeviceProperties props = org.lwjgl.vulkan.VkPhysicalDeviceProperties.calloc(stack);
+        VkPhysicalDeviceProperties props = VkPhysicalDeviceProperties.calloc(stack);
         VK11.vkGetPhysicalDeviceProperties(physicalDevice.vkPhysicalDevice(), props);
         int apiVersion = props.apiVersion();
 
-        // Query all supported features upfront.
-        VkPhysicalDeviceVulkan12Features supported12 = null;
-        VkPhysicalDeviceSynchronization2Features supportedSync2 = null;
-        VkPhysicalDeviceDynamicRenderingFeatures supportedDynamic = null;
-        VkPhysicalDeviceMeshShaderFeaturesEXT supportedMeshEXT = null;
-        VkPhysicalDeviceMeshShaderFeaturesNV supportedMeshNV = null;
+        VkPhysicalDeviceVulkan12Features supported12 = VkPhysicalDeviceVulkan12Features.calloc(stack);
+        VkPhysicalDeviceSynchronization2Features supportedSync2 = VkPhysicalDeviceSynchronization2Features.calloc(stack);
+        VkPhysicalDeviceDynamicRenderingFeatures supportedDynamic = VkPhysicalDeviceDynamicRenderingFeatures.calloc(stack);
+        VkPhysicalDeviceMeshShaderFeaturesEXT supportedMeshEXT = VkPhysicalDeviceMeshShaderFeaturesEXT.calloc(stack);
+        VkPhysicalDeviceMeshShaderFeaturesNV supportedMeshNV = VkPhysicalDeviceMeshShaderFeaturesNV.calloc(stack);
 
-        // Query Vulkan 1.2 features if device supports it.
-        if (apiVersion >= VK12.VK_API_VERSION_1_2) {
-            supported12 = VkPhysicalDeviceVulkan12Features.calloc(stack);
-            VkPhysicalDeviceFeatures2 queryVK12 = VkPhysicalDeviceFeatures2.calloc(stack);
-            queryVK12.pNext(supported12.address());
-            VK11.vkGetPhysicalDeviceFeatures2(physicalDevice.vkPhysicalDevice(), queryVK12);
-        }
-
-        // Query Synchronization2 features if extension available.
-        if (physicalDevice.hasDeviceExtension("VK_KHR_synchronization2")) {
-            supportedSync2 = VkPhysicalDeviceSynchronization2Features.calloc(stack);
-            VkPhysicalDeviceFeatures2 querySync2 = VkPhysicalDeviceFeatures2.calloc(stack);
-            querySync2.pNext(supportedSync2.address());
-            VK11.vkGetPhysicalDeviceFeatures2(physicalDevice.vkPhysicalDevice(), querySync2);
-        }
-
-        // Query Dynamic Rendering features if extension available.
-        if (physicalDevice.hasDeviceExtension("VK_KHR_dynamic_rendering")) {
-            supportedDynamic = VkPhysicalDeviceDynamicRenderingFeatures.calloc(stack);
-            VkPhysicalDeviceFeatures2 queryDynamic = VkPhysicalDeviceFeatures2.calloc(stack);
-            queryDynamic.pNext(supportedDynamic.address());
-            VK11.vkGetPhysicalDeviceFeatures2(physicalDevice.vkPhysicalDevice(), queryDynamic);
-        }
-
-        // Query Mesh Shader EXT features if extension available.
         boolean useEXT = physicalDevice.hasDeviceExtension("VK_EXT_mesh_shader");
-        if (useEXT) {
-            supportedMeshEXT = VkPhysicalDeviceMeshShaderFeaturesEXT.calloc(stack);
-            VkPhysicalDeviceFeatures2 queryMeshEXT = VkPhysicalDeviceFeatures2.calloc(stack);
-            queryMeshEXT.pNext(supportedMeshEXT.address());
-            VK11.vkGetPhysicalDeviceFeatures2(physicalDevice.vkPhysicalDevice(), queryMeshEXT);
-        } else if (physicalDevice.hasDeviceExtension("VK_NV_mesh_shader")) {
-            supportedMeshNV = VkPhysicalDeviceMeshShaderFeaturesNV.calloc(stack);
-            VkPhysicalDeviceFeatures2 queryMeshNV = VkPhysicalDeviceFeatures2.calloc(stack);
-            queryMeshNV.pNext(supportedMeshNV.address());
-            VK11.vkGetPhysicalDeviceFeatures2(physicalDevice.vkPhysicalDevice(), queryMeshNV);
+
+        supported12.pNext(supportedSync2.address());
+        supportedSync2.pNext(supportedDynamic.address());
+        supportedDynamic.pNext(useEXT ? supportedMeshEXT.address() : supportedMeshNV.address());
+
+        VkPhysicalDeviceFeatures2 queryFeatures = VkPhysicalDeviceFeatures2.calloc(stack);
+        queryFeatures.pNext(supported12.address());
+        VK11.vkGetPhysicalDeviceFeatures2(physicalDevice.vkPhysicalDevice(), queryFeatures);
+
+        long vk12Ptr = VulkanBackend.VK12_FEATURES_STRUCT.findOrCreateStructInPNextChain(features2, stack);
+        if (vk12Ptr != 0L) {
+            VkPhysicalDeviceVulkan12Features.create(vk12Ptr)
+                .descriptorIndexing(supported12.descriptorIndexing())
+                .bufferDeviceAddress(supported12.bufferDeviceAddress())
+                .drawIndirectCount(supported12.drawIndirectCount())
+                .shaderSubgroupExtendedTypes(supported12.shaderSubgroupExtendedTypes());
         }
 
-        // Enable Vulkan 1.2 features only when supported and device supports VK 1.2.
-        if (supported12 != null && apiVersion >= VK12.VK_API_VERSION_1_2) {
-            long vk12Ptr = VulkanBackend.VK12_FEATURES_STRUCT.findOrCreateStructInPNextChain(features2, stack);
-            if (vk12Ptr != 0L) {
-                VkPhysicalDeviceVulkan12Features.create(vk12Ptr)
-                    .descriptorIndexing(supported12.descriptorIndexing())
-                    .bufferDeviceAddress(supported12.bufferDeviceAddress())
-                    .drawIndirectCount(supported12.drawIndirectCount())
-                    .shaderSubgroupExtendedTypes(supported12.shaderSubgroupExtendedTypes());
-            }
-        }
-
-        // Enable Synchronization2 if feature is supported.
-        if (supportedSync2 != null && supportedSync2.synchronization2()) {
-            extensions.add("VK_KHR_synchronization2");
+        if (supportedSync2.synchronization2()) {
             long sync2Ptr = VulkanBackend.SYNC2_FEATURES_STRUCT.findOrCreateStructInPNextChain(features2, stack);
             if (sync2Ptr != 0L) {
                 VkPhysicalDeviceSynchronization2Features.create(sync2Ptr)
@@ -130,31 +119,29 @@ public class VulkanBackendMixin {
             }
         }
 
-        // Enable Dynamic Rendering if feature is supported.
-        if (supportedDynamic != null && supportedDynamic.dynamicRendering()) {
-            extensions.add("VK_KHR_dynamic_rendering");
-            long dynamicRenderingPtr = VulkanBackend.DYNAMIC_RENDERING_FEATURES_STURCT.findOrCreateStructInPNextChain(features2, stack);
+        if (supportedDynamic.dynamicRendering()) {
+            long dynamicRenderingPtr = new VulkanPNextStruct(KHRDynamicRendering.VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR, VkPhysicalDeviceDynamicRenderingFeatures.SIZEOF)
+                .findOrCreateStructInPNextChain(features2, stack);
             if (dynamicRenderingPtr != 0L) {
                 VkPhysicalDeviceDynamicRenderingFeatures.create(dynamicRenderingPtr)
                     .dynamicRendering(true);
             }
         }
 
-        // Enable Mesh Shader features if supported.
-        if (useEXT && supportedMeshEXT != null && (supportedMeshEXT.meshShader() || supportedMeshEXT.taskShader())) {
+        if (useEXT && supportedMeshEXT.meshShader()) {
             long meshShaderPtr = new VulkanPNextStruct(EXTMeshShader.VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT, VkPhysicalDeviceMeshShaderFeaturesEXT.SIZEOF)
                 .findOrCreateStructInPNextChain(features2, stack);
             if (meshShaderPtr != 0L) {
                 VkPhysicalDeviceMeshShaderFeaturesEXT.create(meshShaderPtr)
-                    .meshShader(supportedMeshEXT.meshShader())
+                    .meshShader(true)
                     .taskShader(supportedMeshEXT.taskShader());
             }
-        } else if (supportedMeshNV != null && (supportedMeshNV.meshShader() || supportedMeshNV.taskShader())) {
+        } else if (!useEXT && supportedMeshNV.meshShader()) {
             long meshShaderPtr = new VulkanPNextStruct(NVMeshShader.VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_NV, VkPhysicalDeviceMeshShaderFeaturesNV.SIZEOF)
                 .findOrCreateStructInPNextChain(features2, stack);
             if (meshShaderPtr != 0L) {
                 VkPhysicalDeviceMeshShaderFeaturesNV.create(meshShaderPtr)
-                    .meshShader(supportedMeshNV.meshShader())
+                    .meshShader(true)
                     .taskShader(supportedMeshNV.taskShader());
             }
         }
