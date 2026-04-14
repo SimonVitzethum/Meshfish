@@ -14,7 +14,6 @@ import org.lwjgl.vulkan.VK11;
 import org.lwjgl.vulkan.VK12;
 import org.lwjgl.vulkan.VK13;
 import org.lwjgl.vulkan.KHRDynamicRendering;
-import org.lwjgl.vulkan.VkPhysicalDevice;
 import org.lwjgl.vulkan.VkPhysicalDeviceFeatures2;
 import org.lwjgl.vulkan.VkPhysicalDeviceProperties;
 import org.lwjgl.vulkan.VkPhysicalDeviceDynamicRenderingFeatures;
@@ -68,6 +67,9 @@ public class VulkanBackendMixin {
                 if (physicalDevice.hasDeviceExtension("VK_KHR_descriptor_indexing")) {
                     extensions.add("VK_KHR_descriptor_indexing");
                 }
+                if (physicalDevice.hasDeviceExtension("VK_KHR_draw_indirect_count")) {
+                    extensions.add("VK_KHR_draw_indirect_count");
+                }
             }
         }
     }
@@ -82,6 +84,8 @@ public class VulkanBackendMixin {
         locals = LocalCapture.CAPTURE_FAILHARD
     )
     private void injectMeshShaderFeatures(Collection<String> extensions, VulkanPhysicalDevice physicalDevice, CallbackInfoReturnable<org.lwjgl.vulkan.VkDevice> cir, MemoryStack stack, VkPhysicalDeviceFeatures2 features2) {
+        if (stack == null || features2 == null) return; // Null safety check for mixin injection
+
         // Query the physical device properties to get API version
         VkPhysicalDeviceProperties props = VkPhysicalDeviceProperties.calloc(stack);
         VK11.vkGetPhysicalDeviceProperties(physicalDevice.vkPhysicalDevice(), props);
@@ -94,8 +98,7 @@ public class VulkanBackendMixin {
         VkPhysicalDeviceVulkan12Features supported12 = null;
         if (apiVersion >= VK12.VK_API_VERSION_1_2 || physicalDevice.hasDeviceExtension("VK_KHR_descriptor_indexing") ||
             physicalDevice.hasDeviceExtension("VK_KHR_buffer_device_address") ||
-            physicalDevice.hasDeviceExtension("VK_KHR_draw_indirect_count") ||
-            physicalDevice.hasDeviceExtension("VK_EXT_shader_subgroup_extended_types")) {
+            physicalDevice.hasDeviceExtension("VK_KHR_draw_indirect_count")) {
             supported12 = VkPhysicalDeviceVulkan12Features.calloc(stack);
             VkPhysicalDeviceFeatures2 queryVK12 = VkPhysicalDeviceFeatures2.calloc(stack);
             queryVK12.pNext(supported12.address());
@@ -153,9 +156,7 @@ public class VulkanBackendMixin {
                 if (physicalDevice.hasDeviceExtension("VK_KHR_draw_indirect_count")) {
                     vk12Features.drawIndirectCount(supported12.drawIndirectCount());
                 }
-                if (physicalDevice.hasDeviceExtension("VK_EXT_shader_subgroup_extended_types")) {
-                    vk12Features.shaderSubgroupExtendedTypes(supported12.shaderSubgroupExtendedTypes());
-                }
+                // shaderSubgroupExtendedTypes is Vulkan 1.2 core only, no extension available
             }
         }
 
