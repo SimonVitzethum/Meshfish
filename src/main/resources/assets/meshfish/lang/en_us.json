@@ -1,0 +1,3 @@
+{
+    "meshfish.warning.not_vulkan": "-----------------------------------\nWARNING: YOU'RE USING OPENGL;\nTHE MESHFISH MOD WILL HAVE EITHER\nNO EFFECT OR UNDEFINED BEHAVIOUR\n-----------------------------------"
+}
