@@ -70,6 +70,15 @@ public class VulkanBackendMixin {
     }
 
     @Inject(
+        method = "createDevice(JLcom/mojang/blaze3d/shaders/ShaderSource;Lcom/mojang/blaze3d/shaders/GpuDebugOptions;)Lcom/mojang/blaze3d/systems/GpuDevice;",
+        at = @At("RETURN")
+    )
+    private void onCreateDeviceReturn(long window, ShaderSource shaderSource, GpuDebugOptions debugOptions, CallbackInfoReturnable<com.mojang.blaze3d.systems.GpuDevice> cir) {
+        MeshfishBuffers.backendDeviceCreated = true;
+        if (MeshfishBuffers.DEBUG) System.out.println("[Meshfish] VulkanBackend#createDevice returned - device ready flag set");
+    }
+
+    @Inject(
         method = "createDevice(Ljava/util/Collection;Lcom/mojang/blaze3d/vulkan/VulkanPhysicalDevice;)Lorg/lwjgl/vulkan/VkDevice;",
         at = @At(
             value = "INVOKE",

@@ -5,7 +5,8 @@
 	"client": [
 		"ExampleClientMixin",
 		"VulkanBackendMixin",
-		"VulkanCommandEncoderMixin"
+		"VulkanCommandEncoderMixin",
+		"VulkanDeviceMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
