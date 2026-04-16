@@ -159,7 +159,7 @@ public class MeshfishBuffers {
 
                         VkDescriptorSetLayoutCreateInfo layoutInfo = VkDescriptorSetLayoutCreateInfo.calloc(s2).sType$Default().pBindings(bindings);
                         LongBuffer pLayout = s2.mallocLong(1);
-                        int err = VK12.vkCreateDescriptorSetLayout(vkDeviceRef, layoutInfo, null, pLayout);
+                        int err = VK12.vkCreateDescriptorSetLayout(Objects.requireNonNull(vkDeviceRef, "vkDeviceRef is null"), layoutInfo, null, pLayout);
                         if (err != VK10.VK_SUCCESS) {
                             System.err.println("[Meshfish] Failed to create descriptor set layout: " + err);
                         } else {
@@ -173,7 +173,7 @@ public class MeshfishBuffers {
 
                         VkDescriptorPoolCreateInfo poolInfo = VkDescriptorPoolCreateInfo.calloc(s2).sType$Default().pPoolSizes(poolSizes).maxSets(FRAME_COUNT);
                         LongBuffer pPool = s2.mallocLong(1);
-                        err = VK12.vkCreateDescriptorPool(vkDeviceRef, poolInfo, null, pPool);
+                        err = VK12.vkCreateDescriptorPool(Objects.requireNonNull(vkDeviceRef, "vkDeviceRef is null"), poolInfo, null, pPool);
                         if (err != VK10.VK_SUCCESS) {
                             System.err.println("[Meshfish] Failed to create descriptor pool: " + err);
                         } else {
@@ -187,7 +187,7 @@ public class MeshfishBuffers {
 
                         VkDescriptorSetAllocateInfo allocInfo = VkDescriptorSetAllocateInfo.calloc(s2).sType$Default().descriptorPool(descriptorPool).pSetLayouts(layouts);
                         LongBuffer pDescriptorSets = s2.mallocLong(FRAME_COUNT);
-                        err = VK12.vkAllocateDescriptorSets(vkDeviceRef, allocInfo, pDescriptorSets);
+                        err = VK12.vkAllocateDescriptorSets(Objects.requireNonNull(vkDeviceRef, "vkDeviceRef is null"), allocInfo, pDescriptorSets);
                         if (err != VK10.VK_SUCCESS) {
                             System.err.println("[Meshfish] Failed to allocate descriptor sets: " + err);
                         } else {
@@ -210,7 +210,7 @@ public class MeshfishBuffers {
                             writes.get(1).sType(VK10.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET).dstSet(descriptorSets[j]).dstBinding(1).dstArrayElement(0).descriptorType(VK10.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER).pBufferInfo(uniInfo).descriptorCount(1);
                             writes.get(2).sType(VK10.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET).dstSet(descriptorSets[j]).dstBinding(2).dstArrayElement(0).descriptorType(VK10.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER).pBufferInfo(taskInfo).descriptorCount(1);
 
-                            VK10.vkUpdateDescriptorSets(vkDeviceRef, writes, null);
+                            VK10.vkUpdateDescriptorSets(Objects.requireNonNull(vkDeviceRef, "vkDeviceRef is null"), writes, null);
                         }
                     }
                 } catch (Throwable t) {
@@ -238,11 +238,11 @@ public class MeshfishBuffers {
             if (vkDeviceRef != null) {
                 try {
                     if (descriptorPool != 0L) {
-                        VK12.vkDestroyDescriptorPool(vkDeviceRef, descriptorPool, null);
+                        VK12.vkDestroyDescriptorPool(Objects.requireNonNull(vkDeviceRef, "vkDeviceRef is null"), descriptorPool, null);
                         descriptorPool = 0L;
                     }
                     if (descriptorSetLayout != 0L) {
-                        VK12.vkDestroyDescriptorSetLayout(vkDeviceRef, descriptorSetLayout, null);
+                        VK12.vkDestroyDescriptorSetLayout(Objects.requireNonNull(vkDeviceRef, "vkDeviceRef is null"), descriptorSetLayout, null);
                         descriptorSetLayout = 0L;
                     }
                 } catch (Throwable t) {

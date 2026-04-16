@@ -24,28 +24,38 @@ public class VulkanDeviceMixin {
                 if (MeshfishBuffers.DEBUG) System.out.println("[Meshfish] Lazy-initialized MeshfishBuffers after device creation");
             }
 
-            // Storage buffer (mesh data)
-            if ((usage & VK12.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) != 0) {
+            // Only intercept Meshfish-created buffers by name to avoid hijacking unrelated engine buffers.
+            String requestedName = null;
+            try {
+                if (nameSupplier != null) requestedName = nameSupplier.get();
+            } catch (Throwable ignored) {
+                requestedName = null;
+            }
+
+            boolean isMeshfish = requestedName != null && requestedName.contains("Meshfish-");
+
+            // Storage buffer (mesh data) — only if this request originates from Meshfish
+            if (isMeshfish && (usage & VK12.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) != 0) {
                 if (MeshfishBuffers.getCurrentMeshStorageBuffer() == null) MeshfishBuffers.initialize(device);
-                if (MeshfishBuffers.DEBUG) System.out.println("[Meshfish] INTERCEPT: returning mesh storage buffer for storage buffer request");
+                if (MeshfishBuffers.DEBUG) System.out.println("[Meshfish] INTERCEPT: returning mesh storage buffer for " + requestedName);
                 cir.setReturnValue(MeshfishBuffers.getCurrentMeshStorageBuffer());
                 cir.cancel();
                 return;
             }
 
             // Uniform buffer (camera)
-            if ((usage & VK12.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT) != 0) {
+            if (isMeshfish && (usage & VK12.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT) != 0) {
                 if (MeshfishBuffers.getCurrentCameraUniformBuffer() == null) MeshfishBuffers.initialize(device);
-                if (MeshfishBuffers.DEBUG) System.out.println("[Meshfish] INTERCEPT: returning camera uniform buffer for uniform buffer request");
+                if (MeshfishBuffers.DEBUG) System.out.println("[Meshfish] INTERCEPT: returning camera uniform buffer for " + requestedName);
                 cir.setReturnValue(MeshfishBuffers.getCurrentCameraUniformBuffer());
                 cir.cancel();
                 return;
             }
 
             // Indirect buffer
-            if ((usage & VK12.VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT) != 0) {
+            if (isMeshfish && (usage & VK12.VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT) != 0) {
                 if (MeshfishBuffers.getCurrentIndirectBuffer() == null) MeshfishBuffers.initialize(device);
-                if (MeshfishBuffers.DEBUG) System.out.println("[Meshfish] INTERCEPT: returning indirect buffer for indirect buffer request");
+                if (MeshfishBuffers.DEBUG) System.out.println("[Meshfish] INTERCEPT: returning indirect buffer for " + requestedName);
                 cir.setReturnValue(MeshfishBuffers.getCurrentIndirectBuffer());
                 cir.cancel();
                 return;
