@@ -26,6 +26,18 @@ loom {
 
 }
 
+sourceSets {
+	main {
+		resources {
+			srcDir("src/main/slang")
+		}
+	}
+}
+
+def slangSourceDir = layout.projectDirectory.dir("slang")
+def compiledSlangDir = layout.projectDirectory.dir("src/main/slang")
+def compileSlangScript = layout.projectDirectory.file("scripts/compile-slang.sh")
+
 dependencies {
 	// To change the versions see the gradle.properties file
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
@@ -39,9 +51,44 @@ dependencies {
 
 processResources {
 	inputs.property "version", project.version
+	exclude(".gitignore")
 
 	filesMatching("fabric.mod.json") {
 		expand "version": inputs.properties.version
+	}
+}
+
+tasks.register("compileSlangShaders", Exec) {
+	group = "build"
+	description = "Compiles Slang shaders to SPIR-V before processing resources."
+	inputs.files(fileTree(slangSourceDir) {
+		include("*.slang")
+	})
+	outputs.dir(compiledSlangDir)
+	outputs.upToDateWhen { false }
+	commandLine(
+		"bash",
+		compileSlangScript.asFile.absolutePath,
+		slangSourceDir.asFile.absolutePath,
+		compiledSlangDir.asFile.absolutePath
+	)
+}
+
+tasks.named("processResources") {
+	dependsOn(tasks.named("compileSlangShaders"))
+}
+
+tasks.configureEach {
+	if (name == "sourcesJar") {
+		dependsOn(tasks.named("compileSlangShaders"))
+	}
+}
+
+tasks.named("clean") {
+	doLast {
+		delete(fileTree(compiledSlangDir) {
+			include("*.spv")
+		})
 	}
 }
 

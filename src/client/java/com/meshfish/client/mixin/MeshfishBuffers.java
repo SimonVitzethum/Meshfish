@@ -3,6 +3,7 @@ package com.meshfish.client.mixin;
 import com.mojang.blaze3d.vulkan.VulkanDevice;
 import com.mojang.blaze3d.vulkan.VulkanGpuBuffer;
 import org.lwjgl.system.MemoryStack;
+import org.lwjgl.vulkan.EXTMeshShader;
 import org.lwjgl.vulkan.VK10;
 import org.lwjgl.vulkan.VK12;
 import org.lwjgl.vulkan.VkDevice;
@@ -151,7 +152,11 @@ public class MeshfishBuffers {
                     try (MemoryStack s2 = MemoryStack.stackPush()) {
                         // Layout bindings: 0 = mesh storage, 1 = camera uniform, 2 = task payload storage
                         VkDescriptorSetLayoutBinding.Buffer bindings = VkDescriptorSetLayoutBinding.calloc(3, s2);
-                        int stageFlags = VK10.VK_SHADER_STAGE_VERTEX_BIT | VK10.VK_SHADER_STAGE_FRAGMENT_BIT | VK10.VK_SHADER_STAGE_COMPUTE_BIT;
+                        int stageFlags = VK10.VK_SHADER_STAGE_VERTEX_BIT
+                                | VK10.VK_SHADER_STAGE_FRAGMENT_BIT
+                                | VK10.VK_SHADER_STAGE_COMPUTE_BIT
+                                | EXTMeshShader.VK_SHADER_STAGE_TASK_BIT_EXT
+                                | EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT;
                         bindings.put(VkDescriptorSetLayoutBinding.calloc(s2).binding(0).descriptorType(VK10.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER).descriptorCount(1).stageFlags(stageFlags));
                         bindings.put(VkDescriptorSetLayoutBinding.calloc(s2).binding(1).descriptorType(VK10.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER).descriptorCount(1).stageFlags(stageFlags));
                         bindings.put(VkDescriptorSetLayoutBinding.calloc(s2).binding(2).descriptorType(VK10.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER).descriptorCount(1).stageFlags(stageFlags));
@@ -168,7 +173,7 @@ public class MeshfishBuffers {
                         }
 
                         VkDescriptorPoolSize.Buffer poolSizes = VkDescriptorPoolSize.calloc(2, s2);
-                        poolSizes.get(0).type(VK10.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER).descriptorCount(FRAME_COUNT);
+                        poolSizes.get(0).type(VK10.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER).descriptorCount(FRAME_COUNT * 2);
                         poolSizes.get(1).type(VK10.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER).descriptorCount(FRAME_COUNT);
 
                         VkDescriptorPoolCreateInfo poolInfo = VkDescriptorPoolCreateInfo.calloc(s2).sType$Default().pPoolSizes(poolSizes).maxSets(FRAME_COUNT);

@@ -1,5 +1,6 @@
 package com.meshfish.client;
 
+import com.meshfish.client.render.MeshfishDebugRenderer;
 import com.meshfish.client.util.RendererType;
 
 import net.fabricmc.api.ClientModInitializer;
@@ -10,6 +11,8 @@ import net.minecraft.network.chat.Component;
 public class MeshfishClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
+		MeshfishDebugRenderer.initialize();
+
 		ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
 			if (client.player == null)
 				return;

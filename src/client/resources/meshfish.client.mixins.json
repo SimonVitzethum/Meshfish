@@ -6,7 +6,10 @@
 		"ExampleClientMixin",
 		"VulkanBackendMixin",
 		"VulkanCommandEncoderMixin",
-		"VulkanDeviceMixin"
+		"VulkanDeviceMixin",
+		"VulkanDevicePipelineMixin",
+		"VulkanRenderPassMixin",
+		"VulkanRenderPipelineMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
