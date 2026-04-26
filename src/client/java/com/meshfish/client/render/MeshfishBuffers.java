@@ -1,4 +1,4 @@
-package com.meshfish.client.mixin;
+package com.meshfish.client.render;
 
 import com.mojang.blaze3d.vulkan.VulkanDevice;
 import com.mojang.blaze3d.vulkan.VulkanGpuBuffer;

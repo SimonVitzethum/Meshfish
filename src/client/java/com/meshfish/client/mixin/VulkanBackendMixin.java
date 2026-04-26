@@ -1,6 +1,7 @@
 package com.meshfish.client.mixin;
 
 import com.meshfish.client.render.MeshfishPipelineRegistry;
+import com.meshfish.client.render.MeshfishBuffers;
 import com.mojang.blaze3d.shaders.GpuDebugOptions;
 import com.mojang.blaze3d.shaders.ShaderSource;
 import com.mojang.blaze3d.vulkan.VulkanBackend;

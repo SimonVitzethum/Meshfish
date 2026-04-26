@@ -1,7 +1,7 @@
 package com.mojang.blaze3d.vulkan.glsl;
 
 import com.meshfish.Meshfish;
-import com.meshfish.client.mixin.MeshfishBuffers;
+import com.meshfish.client.render.MeshfishBuffers;
 import com.meshfish.client.render.MeshfishPipelineRegistry;
 import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.pipeline.RenderPipeline;

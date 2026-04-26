@@ -1,5 +1,6 @@
 package com.meshfish.client.mixin;
 
+import com.meshfish.client.render.MeshfishBuffers;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.textures.GpuTexture;
