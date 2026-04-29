@@ -1,8 +1,10 @@
 struct FragmentInput
 {
-    float4 color : COLOR0;
+    [[Location(0)]]
+    float4 color;
 };
 
+[Shader("fragment")]
 float4 main(FragmentInput input) : SV_Target0
 {
     return input.color;
