@@ -15,8 +15,10 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.LongBuffer;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
@@ -44,7 +46,7 @@ public final class MeshfishSpirvPipelineCompiler {
     private static final String TASK_SHADER_RESOURCE = "tool.spv";
     private static final String MESH_SHADER_RESOURCE = "mesh.spv";
     private static final String FRAGMENT_SHADER_RESOURCE = "fragment.spv";
-    private static final int COLOR_ATTACHMENT_FORMAT = 37;
+    private static final int COLOR_ATTACHMENT_FORMAT = 37;  
     private static final int DEPTH_ATTACHMENT_FORMAT = 126;
 
     private MeshfishSpirvPipelineCompiler() {
@@ -69,7 +71,7 @@ public final class MeshfishSpirvPipelineCompiler {
         long withoutDepthPipeline = 0L;
 
         try {
-            taskShader = loadOptionalShader(TASK_SHADER_RESOURCE);
+            taskShader = null;
             meshShader = loadRequiredShader(MESH_SHADER_RESOURCE);
             fragmentShader = loadRequiredShader(FRAGMENT_SHADER_RESOURCE);
 
@@ -79,14 +81,16 @@ public final class MeshfishSpirvPipelineCompiler {
             addToBindGroup(pushDescriptorEntries, fragmentShader, pipeline);
 
             if (taskShader != null) {
-                rebind(taskShader, List.of(), pushDescriptorEntries, false);
+                rebind(taskShader, Map.of(), pushDescriptorEntries, false);
             }
 
-            rebind(meshShader, List.of(), pushDescriptorEntries, false);
+            rebind(meshShader, Map.of(), pushDescriptorEntries, false);
 
-            ArrayList<String> meshOutputs = new ArrayList<>();
+            HashMap<String, Integer> meshOutputs = new HashMap<>();
             for (SpvVariable output : meshShader.outputs()) {
-                meshOutputs.add(output.name());
+                int location = spvLocation(meshShader, output);
+                meshOutputs.put(output.name(), location);
+                meshOutputs.put(fieldName(output.name()), location);
             }
             rebind(fragmentShader, meshOutputs, pushDescriptorEntries, true);
 
@@ -406,6 +410,9 @@ public final class MeshfishSpirvPipelineCompiler {
 
         for (SpvUniformBuffer buffer : shader.uniformBuffers()) {
             name = buffer.name();
+            if (isMeshfishDescriptor(name)) {
+                continue;
+            }
             uniformDescription = findUniformDescription(pipeline, name);
             if (uniformDescription.isEmpty()) {
                 throw new ShaderCompileException("Unable to find shader defined uniform (" + name + ")");
@@ -417,6 +424,9 @@ public final class MeshfishSpirvPipelineCompiler {
 
         for (SpvSampler sampler : shader.samplers()) {
             name = sampler.name();
+            if (isMeshfishDescriptor(name)) {
+                continue;
+            }
             uniformDescription = findUniformDescription(pipeline, name);
             if (uniformDescription.isPresent()) {
                 if (sampler.dimensions() != 5) {
@@ -477,7 +487,7 @@ public final class MeshfishSpirvPipelineCompiler {
 
     private static void rebind(
         IntermediaryShaderModule shader,
-        List<String> inputVariables,
+        Map<String, Integer> inputVariables,
         List<VulkanBindGroupLayout.Entry> entries,
         boolean requireAllInputs
     ) throws ShaderCompileException {
@@ -490,20 +500,24 @@ public final class MeshfishSpirvPipelineCompiler {
             remainingInputs.add(input.name());
         }
         for (SpvUniformBuffer uniformBuffer : shader.uniformBuffers()) {
-            remainingUniformBuffers.add(uniformBuffer.name());
+            if (!isMeshfishDescriptor(uniformBuffer.name())) {
+                remainingUniformBuffers.add(uniformBuffer.name());
+            }
         }
         for (SpvSampler sampler : shader.samplers()) {
-            remainingSamplers.add(sampler.name());
+            if (!isMeshfishDescriptor(sampler.name())) {
+                remainingSamplers.add(sampler.name());
+            }
         }
 
-        for (int i = 0; i < inputVariables.size(); i++) {
-            String variableName = inputVariables.get(i);
+        for (Map.Entry<String, Integer> inputEntry : inputVariables.entrySet()) {
+            String variableName = inputEntry.getKey();
             for (SpvVariable inputVariable : shader.inputs()) {
-                if (!inputVariable.name().equals(variableName)) {
+                if (!sameStageVariable(inputVariable.name(), variableName)) {
                     continue;
                 }
-                spvAsIntBuffer.put(inputVariable.locationOffset(), i);
-                remainingInputs.remove(variableName);
+                spvAsIntBuffer.put(inputVariable.locationOffset(), inputEntry.getValue());
+                remainingInputs.remove(inputVariable.name());
                 break;
             }
         }
@@ -570,6 +584,29 @@ public final class MeshfishSpirvPipelineCompiler {
         if (!remainingSamplers.isEmpty()) {
             throw new ShaderCompileException("Shader expects samplers which are not being provided: " + remainingSamplers);
         }
+    }
+
+    private static boolean sameStageVariable(String left, String right) {
+        return left.equals(right) || fieldName(left).equals(fieldName(right));
+    }
+
+    private static String fieldName(String name) {
+        int dot = name.lastIndexOf('.');
+        return dot == -1 ? name : name.substring(dot + 1);
+    }
+
+    private static int spvLocation(IntermediaryShaderModule shader, SpvVariable variable) {
+        return shader.spirv().asIntBuffer().get(variable.locationOffset());
+    }
+
+    private static boolean isMeshfishDescriptor(String name) {
+        return name.equals("meshfishFrame")
+            || name.equals("MeshfishFrameUniforms_std140")
+            || name.equals("meshfishDraws")
+            || name.equals("meshfishScene")
+            || name.equals("meshfishVertices")
+            || name.equals("meshfishIndices")
+            || name.equals("meshfishBlockAtlas");
     }
 
     private static void applyBlendInformation(VkPipelineColorBlendAttachmentState.Buffer attachmentState, com.mojang.blaze3d.pipeline.BlendFunction blendFunction) {

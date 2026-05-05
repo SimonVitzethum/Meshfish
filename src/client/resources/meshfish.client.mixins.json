@@ -3,9 +3,12 @@
 	"package": "com.meshfish.client.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"client": [
+		"ChunkSectionsToRenderMixin",
 		"ExampleClientMixin",
+		"SectionRebuildTaskMixin",
 		"VulkanBackendMixin",
 		"VulkanCommandEncoderMixin",
+		"VulkanConstMixin",
 		"VulkanDeviceMixin",
 		"VulkanDevicePipelineMixin",
 		"VulkanRenderPassMixin",

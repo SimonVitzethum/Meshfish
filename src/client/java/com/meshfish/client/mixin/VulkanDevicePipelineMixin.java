@@ -1,6 +1,7 @@
 package com.meshfish.client.mixin;
 
 import com.meshfish.Meshfish;
+import com.meshfish.client.render.MeshfishBuffers;
 import com.meshfish.client.render.MeshfishPipelineRegistry;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.shaders.ShaderSource;
@@ -29,6 +30,7 @@ public class VulkanDevicePipelineMixin {
 
         VulkanDevice device = (VulkanDevice) (Object) this;
         try {
+            MeshfishBuffers.initialize(device);
             cir.setReturnValue(MeshfishSpirvPipelineCompiler.compile(device, pipeline));
         } catch (Exception e) {
             Meshfish.LOGGER.error("Failed to compile Meshfish SPIR-V pipeline {}", pipeline.getLocation(), e);
