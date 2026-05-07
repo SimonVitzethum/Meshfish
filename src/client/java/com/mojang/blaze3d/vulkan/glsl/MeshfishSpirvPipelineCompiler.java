@@ -45,7 +45,9 @@ import org.lwjgl.vulkan.VkPipelineViewportStateCreateInfo;
 public final class MeshfishSpirvPipelineCompiler {
     private static final String TASK_SHADER_RESOURCE = "tool.spv";
     private static final String MESH_SHADER_RESOURCE = "mesh.spv";
+    private static final String SCENE_MESH_SHADER_RESOURCE = "scene_mesh.spv";
     private static final String FRAGMENT_SHADER_RESOURCE = "fragment.spv";
+    private static final String SCENE_FRAGMENT_SHADER_RESOURCE = "scene_fragment.spv";
     private static final int COLOR_ATTACHMENT_FORMAT = 37;  
     private static final int DEPTH_ATTACHMENT_FORMAT = 126;
 
@@ -71,9 +73,17 @@ public final class MeshfishSpirvPipelineCompiler {
         long withoutDepthPipeline = 0L;
 
         try {
+            boolean scenePipeline = isScenePipeline(pipeline);
+            Meshfish.LOGGER.info(
+                "Meshfish compiling pipeline {} scene={} descriptorLayout={} frameSet0={}",
+                pipeline.getLocation(),
+                scenePipeline,
+                MeshfishBuffers.descriptorSetLayout,
+                MeshfishBuffers.descriptorSets[0]
+            );
             taskShader = null;
-            meshShader = loadRequiredShader(MESH_SHADER_RESOURCE);
-            fragmentShader = loadRequiredShader(FRAGMENT_SHADER_RESOURCE);
+            meshShader = loadRequiredShader(scenePipeline ? SCENE_MESH_SHADER_RESOURCE : MESH_SHADER_RESOURCE);
+            fragmentShader = loadRequiredShader(scenePipeline ? SCENE_FRAGMENT_SHADER_RESOURCE : FRAGMENT_SHADER_RESOURCE);
 
             ArrayList<VulkanBindGroupLayout.Entry> pushDescriptorEntries = new ArrayList<>();
             addToBindGroup(pushDescriptorEntries, taskShader, pipeline);
@@ -111,9 +121,11 @@ public final class MeshfishSpirvPipelineCompiler {
             );
 
             try (MemoryStack stack = MemoryStack.stackPush()) {
-                LongBuffer layoutHandles = MeshfishBuffers.descriptorSetLayout != 0L
-                    ? stack.longs(pushDescriptorLayout.handle(), MeshfishBuffers.descriptorSetLayout)
-                    : stack.longs(pushDescriptorLayout.handle());
+                LongBuffer layoutHandles = scenePipeline
+                    ? stack.longs(MeshfishBuffers.descriptorSetLayout)
+                    : MeshfishBuffers.descriptorSetLayout != 0L
+                        ? stack.longs(pushDescriptorLayout.handle(), MeshfishBuffers.descriptorSetLayout)
+                        : stack.longs(pushDescriptorLayout.handle());
                 VkPipelineLayoutCreateInfo layoutCreateInfo = VkPipelineLayoutCreateInfo.calloc(stack)
                     .sType$Default()
                     .pSetLayouts(layoutHandles);
@@ -298,6 +310,23 @@ public final class MeshfishSpirvPipelineCompiler {
 
     private static boolean startsWithMeshfishNamespace(Object identifierLike) {
         return String.valueOf(identifierLike).startsWith("meshfish:");
+    }
+
+    private static String meshShaderResource(RenderPipeline pipeline) {
+        return isScenePipeline(pipeline)
+            ? SCENE_MESH_SHADER_RESOURCE
+            : MESH_SHADER_RESOURCE;
+    }
+
+    private static boolean isScenePipeline(RenderPipeline pipeline) {
+        return isSceneShader(pipeline.getLocation()) || isSceneShader(pipeline.getVertexShader());
+    }
+
+    private static boolean isSceneShader(Object identifierLike) {
+        String value = String.valueOf(identifierLike);
+        return value.equals("meshfish:scene_mesh")
+            || value.endsWith(":scene_mesh")
+            || value.contains("meshfish:scene_mesh");
     }
 
     private static IntermediaryShaderModule loadRequiredShader(String resourceName) throws IOException, ShaderCompileException {

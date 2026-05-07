@@ -76,4 +76,6 @@ compile_stage() {
 
 compile_stage "$SOURCE_DIR/tool.slang" task task "$OUTPUT_DIR/tool.spv"
 compile_stage "$SOURCE_DIR/mesh.slang" mesh mesh "$OUTPUT_DIR/mesh.spv"
+compile_stage "$SOURCE_DIR/scene_mesh.slang" mesh mesh "$OUTPUT_DIR/scene_mesh.spv"
 compile_stage "$SOURCE_DIR/fragment.slang" fragment frag "$OUTPUT_DIR/fragment.spv"
+compile_stage "$SOURCE_DIR/scene_fragment.slang" fragment frag "$OUTPUT_DIR/scene_fragment.spv"

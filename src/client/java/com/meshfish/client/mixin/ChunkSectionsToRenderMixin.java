@@ -21,9 +21,8 @@ public abstract class ChunkSectionsToRenderMixin {
         method = "renderGroup",
         at = @At(
             value = "INVOKE",
-            target = "Lcom/mojang/blaze3d/systems/RenderPass;bindTexture(Ljava/lang/String;Lcom/mojang/blaze3d/textures/GpuTextureView;Lcom/mojang/blaze3d/textures/GpuSampler;)V",
-            ordinal = 1,
-            shift = At.Shift.AFTER
+            target = "Lcom/mojang/blaze3d/systems/RenderPass;close()V",
+            shift = At.Shift.BEFORE
         ),
         locals = LocalCapture.CAPTURE_FAILHARD
     )

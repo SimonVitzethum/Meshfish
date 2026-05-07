@@ -12,7 +12,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelTerrainRenderContext;
@@ -59,8 +58,8 @@ public final class MeshfishSceneRenderer {
     private static final RandomSource MODEL_RANDOM = RandomSource.createThreadLocalInstance(0L);
     private static final RenderPipeline SCENE_PIPELINE = RenderPipeline.builder()
         .withLocation(Identifier.fromNamespaceAndPath("meshfish", "scene_mesh"))
-        .withVertexShader(Identifier.fromNamespaceAndPath("meshfish", "mesh"))
-        .withFragmentShader(Identifier.fromNamespaceAndPath("meshfish", "fragment"))
+        .withVertexShader(Identifier.fromNamespaceAndPath("meshfish", "scene_mesh"))
+        .withFragmentShader(Identifier.fromNamespaceAndPath("meshfish", "scene_fragment"))
         .withVertexFormat(DefaultVertexFormat.EMPTY, VertexFormat.Mode.TRIANGLES)
         .withCull(false)
         .withDepthStencilState(DepthStencilState.DEFAULT)
@@ -70,6 +69,7 @@ public final class MeshfishSceneRenderer {
     private static int pendingBlockCount;
     private static int pendingModelCount;
     private static int pendingQuadCount;
+    private static int pendingPrimitiveCount;
     private static int pendingSourceBlockCount;
     private static boolean loggedExtraction;
     private static boolean loggedEmptyExtraction;
@@ -95,7 +95,7 @@ public final class MeshfishSceneRenderer {
         Minecraft minecraft = Minecraft.getInstance();
         ClientLevel level = minecraft.level;
         if (level == null || context.levelState().cameraRenderState == null) {
-            setPendingScene(ByteBuffer.allocateDirect(0), 0, 0, 0, 0);
+            setPendingScene(ByteBuffer.allocateDirect(0), 0, 0, 0, 0, 0);
             return;
         }
 
@@ -115,7 +115,7 @@ public final class MeshfishSceneRenderer {
 
         ByteBuffer sceneData = scene.finish();
         logExtraction(cameraBlock, scene);
-        setPendingScene(sceneData, scene.blocks, scene.models, scene.quads, scene.sourceBlocks);
+        setPendingScene(sceneData, scene.blocks, scene.models, scene.quads, scene.primitives, scene.sourceBlocks);
     }
 
     private static void scanYLayer(
@@ -141,12 +141,13 @@ public final class MeshfishSceneRenderer {
         }
     }
 
-    private static void setPendingScene(ByteBuffer sceneData, int blockCount, int modelCount, int quadCount, int sourceBlockCount) {
+    private static void setPendingScene(ByteBuffer sceneData, int blockCount, int modelCount, int quadCount, int primitiveCount, int sourceBlockCount) {
         synchronized (PENDING_LOCK) {
             pendingScene = sceneData;
             pendingBlockCount = blockCount;
             pendingModelCount = modelCount;
             pendingQuadCount = quadCount;
+            pendingPrimitiveCount = primitiveCount;
             pendingSourceBlockCount = sourceBlockCount;
         }
     }
@@ -156,24 +157,27 @@ public final class MeshfishSceneRenderer {
         int blockCount;
         int modelCount;
         int quadCount;
+        int primitiveCount;
         int sourceBlockCount;
         synchronized (PENDING_LOCK) {
             sceneData = pendingScene.slice();
             blockCount = pendingBlockCount;
             modelCount = pendingModelCount;
             quadCount = pendingQuadCount;
+            primitiveCount = pendingPrimitiveCount;
             sourceBlockCount = pendingSourceBlockCount;
         }
 
-        MeshfishBuffers.uploadScene(sceneData, blockCount, modelCount, quadCount);
+        MeshfishBuffers.uploadScene(sceneData, blockCount, modelCount, quadCount, primitiveCount);
         if (!loggedUpload && blockCount > 0) {
             loggedUpload = true;
             Meshfish.LOGGER.info(
-                "Meshfish scene upload: sourceBlocks={}, blocks={}, models={}, quads={}, gpuBlocks={}, frame={}",
+                "Meshfish scene upload: sourceBlocks={}, blocks={}, models={}, quads={}, primitives={}, gpuBlocks={}, frame={}",
                 sourceBlockCount,
                 blockCount,
                 modelCount,
                 quadCount,
+                primitiveCount,
                 MeshfishBuffers.getSceneBlockCount(),
                 MeshfishBuffers.getFrameIndex()
             );
@@ -229,6 +233,20 @@ public final class MeshfishSceneRenderer {
         return false;
     }
 
+    private static int faceIndex(Direction direction, int fallback) {
+        if (direction == null) {
+            return fallback;
+        }
+
+        for (int i = 0; i < FACE_DIRECTIONS.length; i++) {
+            if (FACE_DIRECTIONS[i] == direction) {
+                return i;
+            }
+        }
+
+        return fallback;
+    }
+
     public static void renderInTerrainPass(RenderPass renderPass) {
         if (!MeshfishPipelineRegistry.meshShadersAvailable) {
             return;
@@ -258,11 +276,11 @@ public final class MeshfishSceneRenderer {
         if (!loggedRender) {
             loggedRender = true;
             Meshfish.LOGGER.info(
-                "Meshfish scene render: blocks={}, models={}, quads={}, potentialQuads={}, vertices={}, frame={}",
+                "Meshfish scene render: blocks={}, models={}, quads={}, primitives={}, vertices={}, frame={}",
                 sceneBlockCount,
                 MeshfishBuffers.getSceneModelCount(),
                 MeshfishBuffers.getSceneQuadCount(),
-                MeshfishBuffers.getScenePotentialQuadCount(),
+                MeshfishBuffers.getScenePrimitiveCount(),
                 MeshfishBuffers.getSceneVertexCount(),
                 MeshfishBuffers.getFrameIndex()
             );
@@ -289,12 +307,20 @@ public final class MeshfishSceneRenderer {
 
         loggedExtraction = true;
         Meshfish.LOGGER.info(
-            "Meshfish scene extraction: cameraBlock={}, sourceBlocks={}, blocks={}, models={}, quads={}",
+            "Meshfish scene extraction: cameraBlock={}, sourceBlocks={}, blocks={}, models={}, quads={}, primitives={}, bounds=({}, {}, {})..({}, {}, {}), topModels={}",
             cameraBlock,
             scene.sourceBlocks,
             scene.blocks,
             scene.models,
-            scene.quads
+            scene.quads,
+            scene.primitives,
+            scene.minX,
+            scene.minY,
+            scene.minZ,
+            scene.maxX,
+            scene.maxY,
+            scene.maxZ,
+            scene.topModelSummary()
         );
     }
 
@@ -303,10 +329,19 @@ public final class MeshfishSceneRenderer {
             .allocateDirect(MeshfishBuffers.SCENE_BUFFER_SIZE)
             .order(ByteOrder.nativeOrder());
         private final Map<BlockState, Integer> modelIndices = new HashMap<>();
+        private final List<BlockState> modelStates = new ArrayList<>();
+        private final int[] modelBlockCounts = new int[MeshfishBuffers.MAX_SCENE_MODELS];
         private int blocks;
         private int models;
         private int quads;
+        private int primitives;
         private int sourceBlocks;
+        private float minX = Float.POSITIVE_INFINITY;
+        private float minY = Float.POSITIVE_INFINITY;
+        private float minZ = Float.POSITIVE_INFINITY;
+        private float maxX = Float.NEGATIVE_INFINITY;
+        private float maxY = Float.NEGATIVE_INFINITY;
+        private float maxZ = Float.NEGATIVE_INFINITY;
 
         private int modelIndex(Minecraft minecraft, BlockState state) {
             Integer existing = this.modelIndices.get(state);
@@ -321,6 +356,7 @@ public final class MeshfishSceneRenderer {
             int firstQuad = this.quads;
             int modelIndex = this.models++;
             BlockStateModel model = minecraft.getModelManager().getBlockStateModelSet().get(state);
+            this.modelStates.add(state);
 
             MODEL_RANDOM.setSeed(0L);
             List<BlockStateModelPart> parts = new ArrayList<>();
@@ -408,6 +444,7 @@ public final class MeshfishSceneRenderer {
                 return false;
             }
 
+            int blockIndex = this.blocks;
             int offset = MeshfishBuffers.SCENE_BLOCKS_OFFSET + this.blocks * MeshfishBuffers.SCENE_BLOCK_RECORD_SIZE;
             this.data.putFloat(offset, x);
             this.data.putFloat(offset + 4, y);
@@ -417,8 +454,64 @@ public final class MeshfishSceneRenderer {
             this.data.putInt(offset + 20, 0xffffffff);
             this.data.putInt(offset + 24, 0);
             this.data.putInt(offset + 28, 0);
+            this.modelBlockCounts[modelIndex]++;
+            this.minX = Math.min(this.minX, x);
+            this.minY = Math.min(this.minY, y);
+            this.minZ = Math.min(this.minZ, z);
+            this.maxX = Math.max(this.maxX, x);
+            this.maxY = Math.max(this.maxY, y);
+            this.maxZ = Math.max(this.maxZ, z);
             this.blocks++;
+            this.putBlockPrimitives(blockIndex, modelIndex, visibleMask);
             return true;
+        }
+
+        private void putBlockPrimitives(int blockIndex, int modelIndex, int visibleMask) {
+            int modelOffset = MeshfishBuffers.SCENE_MODELS_OFFSET + modelIndex * MeshfishBuffers.SCENE_MODEL_RECORD_SIZE;
+            int firstQuad = this.data.getInt(modelOffset);
+            int quadCount = this.data.getInt(modelOffset + 4);
+            for (int slot = 0; slot < quadCount && this.primitives < MeshfishBuffers.MAX_SCENE_PRIMITIVES; slot++) {
+                int quadIndex = firstQuad + slot;
+                int face = this.data.getInt(MeshfishBuffers.SCENE_QUADS_OFFSET + quadIndex * MeshfishBuffers.SCENE_QUAD_RECORD_SIZE + 80);
+                if (face < 6 && (visibleMask & (1 << face)) == 0) {
+                    continue;
+                }
+
+                int primitiveOffset = MeshfishBuffers.SCENE_PRIMITIVES_OFFSET + this.primitives * MeshfishBuffers.SCENE_PRIMITIVE_RECORD_SIZE;
+                if (primitiveOffset + MeshfishBuffers.SCENE_PRIMITIVE_RECORD_SIZE > MeshfishBuffers.SCENE_BUFFER_SIZE) {
+                    return;
+                }
+
+                this.data.putInt(primitiveOffset, blockIndex);
+                this.data.putInt(primitiveOffset + 4, quadIndex);
+                this.primitives++;
+            }
+        }
+
+        private String topModelSummary() {
+            StringBuilder summary = new StringBuilder();
+            boolean[] used = new boolean[this.models];
+            for (int rank = 0; rank < 8; rank++) {
+                int bestIndex = -1;
+                int bestCount = 0;
+                for (int i = 0; i < this.models; i++) {
+                    if (!used[i] && this.modelBlockCounts[i] > bestCount) {
+                        bestIndex = i;
+                        bestCount = this.modelBlockCounts[i];
+                    }
+                }
+                if (bestIndex < 0) {
+                    break;
+                }
+                used[bestIndex] = true;
+                if (summary.length() > 0) {
+                    summary.append("; ");
+                }
+                summary.append(bestCount)
+                    .append("x ")
+                    .append(this.modelStates.get(bestIndex));
+            }
+            return summary.toString();
         }
 
         private boolean putQuad(BakedQuad quad, int face, int modelFirstQuad) {
@@ -437,7 +530,7 @@ public final class MeshfishSceneRenderer {
                 this.data.putFloat(vertexOffset + 12, UVPair.unpackU(packedUv));
                 this.data.putFloat(vertexOffset + 16, UVPair.unpackV(packedUv));
             }
-            this.data.putInt(offset + 80, face);
+            this.data.putInt(offset + 80, faceIndex(quad.direction(), face));
             this.data.putInt(offset + 84, 0);
             this.data.putInt(offset + 88, 0);
             this.data.putInt(offset + 92, 0);
@@ -474,16 +567,16 @@ public final class MeshfishSceneRenderer {
         }
 
         private boolean hasQuadCapacity() {
-            return MeshfishBuffers.SCENE_QUADS_OFFSET + (this.quads + 1) * MeshfishBuffers.SCENE_QUAD_RECORD_SIZE <= MeshfishBuffers.SCENE_BUFFER_SIZE;
+            return this.quads < MeshfishBuffers.MAX_SCENE_QUADS;
         }
 
         private ByteBuffer finish() {
             this.data.putInt(0, this.blocks);
             this.data.putInt(4, this.models);
             this.data.putInt(8, this.quads);
-            this.data.putInt(12, MeshfishBuffers.MAX_MODEL_QUADS);
+            this.data.putInt(12, this.primitives);
             ByteBuffer out = this.data.duplicate().order(ByteOrder.nativeOrder());
-            int usedBytes = MeshfishBuffers.SCENE_QUADS_OFFSET + this.quads * MeshfishBuffers.SCENE_QUAD_RECORD_SIZE;
+            int usedBytes = MeshfishBuffers.SCENE_PRIMITIVES_OFFSET + this.primitives * MeshfishBuffers.SCENE_PRIMITIVE_RECORD_SIZE;
             out.position(0);
             out.limit(Math.min(usedBytes, MeshfishBuffers.SCENE_BUFFER_SIZE));
             return out.slice().order(ByteOrder.nativeOrder());

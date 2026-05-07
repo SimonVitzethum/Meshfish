@@ -22,6 +22,7 @@ import org.lwjgl.vulkan.VkDescriptorSetAllocateInfo;
 import org.lwjgl.vulkan.VkDescriptorBufferInfo;
 import org.lwjgl.vulkan.VkDescriptorImageInfo;
 import org.lwjgl.vulkan.VkWriteDescriptorSet;
+import org.lwjgl.vulkan.VkBufferMemoryBarrier;
 import org.lwjgl.vulkan.VkCommandBuffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -68,22 +69,28 @@ public class MeshfishBuffers {
     public static volatile boolean DEBUG = false;
 
     private static final int DRAW_COMMAND_SIZE = 52;
+    private static final int DRAW_COMMAND_STRIDE = 256;
     public static final int SCENE_BUFFER_SIZE = 1024 * 1024 * 16;
     public static final int MAX_SCENE_BLOCKS = 5400;
     public static final int MAX_SCENE_MODELS = 4096;
     public static final int MAX_MODEL_QUADS = 64;
+    public static final int MAX_SCENE_QUADS = 16384;
+    public static final int MAX_SCENE_PRIMITIVES = MAX_SCENE_BLOCKS * MAX_MODEL_QUADS;
     public static final int SCENE_HEADER_SIZE = 16;
     public static final int SCENE_BLOCK_RECORD_SIZE = 32;
     public static final int SCENE_MODEL_RECORD_SIZE = 8;
     public static final int SCENE_QUAD_RECORD_SIZE = 96;
+    public static final int SCENE_PRIMITIVE_RECORD_SIZE = 8;
     public static final int SCENE_BLOCKS_OFFSET = SCENE_HEADER_SIZE;
     public static final int SCENE_MODELS_OFFSET = SCENE_BLOCKS_OFFSET + MAX_SCENE_BLOCKS * SCENE_BLOCK_RECORD_SIZE;
     public static final int SCENE_QUADS_OFFSET = SCENE_MODELS_OFFSET + MAX_SCENE_MODELS * SCENE_MODEL_RECORD_SIZE;
+    public static final int SCENE_PRIMITIVES_OFFSET = SCENE_QUADS_OFFSET + MAX_SCENE_QUADS * SCENE_QUAD_RECORD_SIZE;
     public static final int DRAW_FLAG_INDEXED = 1;
     public static final int DRAW_FLAG_SCENE_BLOCKS = 2;
     private static volatile int sceneBlockCount;
     private static volatile int sceneModelCount;
     private static volatile int sceneQuadCount;
+    private static volatile int scenePrimitiveCount;
 
     static {
         for (int i = 0; i < FRAME_COUNT; i++) {
@@ -143,18 +150,23 @@ public class MeshfishBuffers {
     }
 
     public static int getScenePotentialQuadCount() {
-        return sceneBlockCount * MAX_MODEL_QUADS;
+        return scenePrimitiveCount;
+    }
+
+    public static int getScenePrimitiveCount() {
+        return scenePrimitiveCount;
     }
 
     public static int getSceneVertexCount() {
         return getScenePotentialQuadCount() * 3;
     }
 
-    public static void uploadScene(ByteBuffer sceneData, int blockCount, int modelCount, int quadCount) {
+    public static void uploadScene(ByteBuffer sceneData, int blockCount, int modelCount, int quadCount, int primitiveCount) {
         if (sceneData == null || blockCount <= 0 || sceneData.remaining() <= 0) {
             sceneBlockCount = 0;
             sceneModelCount = 0;
             sceneQuadCount = 0;
+            scenePrimitiveCount = 0;
             return;
         }
 
@@ -184,10 +196,12 @@ public class MeshfishBuffers {
             sceneBlockCount = Math.min(blockCount, MAX_SCENE_BLOCKS);
             sceneModelCount = Math.min(modelCount, MAX_SCENE_MODELS);
             sceneQuadCount = Math.max(0, quadCount);
+            scenePrimitiveCount = Math.max(0, Math.min(primitiveCount, MAX_SCENE_PRIMITIVES));
         } else {
             sceneBlockCount = 0;
             sceneModelCount = 0;
             sceneQuadCount = 0;
+            scenePrimitiveCount = 0;
         }
     }
 
@@ -226,10 +240,10 @@ public class MeshfishBuffers {
         }
 
         int frame = getFrameIndex();
-        long commandOffset = drawCommandCursors[frame].getAndAdd(DRAW_COMMAND_SIZE);
+        long commandOffset = drawCommandCursors[frame].getAndAdd(DRAW_COMMAND_STRIDE);
         if (commandOffset + DRAW_COMMAND_SIZE > buffer.size()) {
             commandOffset = 0L;
-            drawCommandCursors[frame].set(DRAW_COMMAND_SIZE);
+            drawCommandCursors[frame].set(DRAW_COMMAND_STRIDE);
         }
 
         try (MeshfishVmaBuffer.MappedView mapped = buffer.map(commandOffset, DRAW_COMMAND_SIZE)) {
@@ -326,10 +340,14 @@ public class MeshfishBuffers {
         return VkDescriptorImageInfo.calloc(1, stack)
             .sampler(sceneSampler)
             .imageView(sceneTextureView)
-            .imageLayout(VK10.VK_IMAGE_LAYOUT_GENERAL);
+            .imageLayout(VK10.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     }
 
     public static void bindDescriptorSet(VkCommandBuffer commandBuffer, long pipelineLayout, long descriptorSet) {
+        bindDescriptorSet(commandBuffer, pipelineLayout, descriptorSet, 1);
+    }
+
+    public static void bindDescriptorSet(VkCommandBuffer commandBuffer, long pipelineLayout, long descriptorSet, int firstSet) {
         if (descriptorSet == 0L) {
             return;
         }
@@ -339,8 +357,38 @@ public class MeshfishBuffers {
                 commandBuffer,
                 VK12.VK_PIPELINE_BIND_POINT_GRAPHICS,
                 pipelineLayout,
-                1,
+                firstSet,
                 stack.longs(descriptorSet),
+                null
+            );
+        }
+    }
+
+    public static void barrierForSceneRead(VkCommandBuffer commandBuffer) {
+        MeshfishVmaBuffer meshBuf = getCurrentMeshStorageBuffer();
+        if (meshBuf == null) {
+            return;
+        }
+
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            VkBufferMemoryBarrier.Buffer barrier = VkBufferMemoryBarrier.calloc(1, stack);
+            barrier.get(0)
+                .sType(VK10.VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER)
+                .srcAccessMask(VK10.VK_ACCESS_HOST_WRITE_BIT | VK10.VK_ACCESS_TRANSFER_WRITE_BIT)
+                .dstAccessMask(VK10.VK_ACCESS_SHADER_READ_BIT)
+                .srcQueueFamilyIndex(VK10.VK_QUEUE_FAMILY_IGNORED)
+                .dstQueueFamilyIndex(VK10.VK_QUEUE_FAMILY_IGNORED)
+                .buffer(meshBuf.vkBuffer())
+                .offset(0L)
+                .size(meshBuf.size());
+
+            VK10.vkCmdPipelineBarrier(
+                commandBuffer,
+                VK10.VK_PIPELINE_STAGE_HOST_BIT | VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
+                EXTMeshShader.VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT,
+                0,
+                null,
+                barrier,
                 null
             );
         }
@@ -352,14 +400,16 @@ public class MeshfishBuffers {
         // set owner thread once
         if (ownerThread == null) ownerThread = Thread.currentThread();
 
-        // avoid re-init
-        boolean already = true;
+        boolean buffersReady = true;
         for (int i = 0; i < FRAME_COUNT; i++) {
             if (meshStorageBuffers[i] == null || cameraUniformBuffers[i] == null || indirectBuffers[i] == null || taskShaderPayloadBuffers[i] == null) {
-                already = false; break;
+                buffersReady = false;
+                break;
             }
         }
-        if (already) return;
+        if (buffersReady && descriptorResourcesReady()) {
+            return;
+        }
 
         initializing = true;
         try (MemoryStack stack = MemoryStack.stackPush()) {
@@ -514,6 +564,19 @@ public class MeshfishBuffers {
         }
     }
 
+    private static boolean descriptorResourcesReady() {
+        if (descriptorSetLayout == 0L || descriptorPool == 0L) {
+            return false;
+        }
+
+        for (int i = 0; i < FRAME_COUNT; i++) {
+            if (descriptorSets[i] == 0L || drawDescriptorSets[i][0] == 0L) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // Synchronized destroy
     public static synchronized void destroy() {
         try {
@@ -545,6 +608,7 @@ public class MeshfishBuffers {
                     sceneBlockCount = 0;
                     sceneModelCount = 0;
                     sceneQuadCount = 0;
+                    scenePrimitiveCount = 0;
                     vkDeviceRef = null;
                 }
             }

@@ -29,13 +29,13 @@ loom {
 sourceSets {
 	main {
 		resources {
-			srcDir("src/main/slang")
+			srcDir(layout.buildDirectory.dir("generated/meshfish/slang"))
 		}
 	}
 }
 
 def slangSourceDir = layout.projectDirectory.dir("slang")
-def compiledSlangDir = layout.projectDirectory.dir("src/main/slang")
+def compiledSlangDir = layout.buildDirectory.dir("generated/meshfish/slang")
 def compileSlangScript = layout.projectDirectory.file("scripts/compile-slang.sh")
 
 dependencies {
@@ -70,7 +70,7 @@ tasks.register("compileSlangShaders", Exec) {
 		"bash",
 		compileSlangScript.asFile.absolutePath,
 		slangSourceDir.asFile.absolutePath,
-		compiledSlangDir.asFile.absolutePath
+		compiledSlangDir.get().asFile.absolutePath
 	)
 }
 
@@ -84,11 +84,13 @@ tasks.configureEach {
 	}
 }
 
+tasks.withType(JavaExec).configureEach {
+	dependsOn(tasks.named("processResources"))
+}
+
 tasks.named("clean") {
 	doLast {
-		delete(fileTree(compiledSlangDir) {
-			include("*.spv")
-		})
+		delete(compiledSlangDir)
 	}
 }
 

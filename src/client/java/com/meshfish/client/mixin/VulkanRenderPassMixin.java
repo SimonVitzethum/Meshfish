@@ -23,7 +23,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(VulkanRenderPass.class)
 public abstract class VulkanRenderPassMixin {
     @Unique
-    private static boolean meshfish$loggedSceneDraw;
+    private static int meshfish$loggedSceneDraws;
 
     @Unique
     private VulkanGpuBuffer meshfish$vertexBuffer;
@@ -102,7 +102,7 @@ public abstract class VulkanRenderPassMixin {
             return;
         }
 
-        MeshfishBuffers.writeDrawCommand(
+        long drawCommandOffset = MeshfishBuffers.writeDrawCommand(
             baseVertex,
             firstIndex,
             indexCount,
@@ -121,7 +121,7 @@ public abstract class VulkanRenderPassMixin {
         MeshfishBuffers.bindDescriptorSet(
             this.secondaryCommandBuffer(),
             this.pipeline.pipelineLayout(),
-            MeshfishBuffers.prepareDrawDescriptorSet(this.meshfish$vertexBuffer, this.meshfish$indexBuffer)
+            MeshfishBuffers.prepareDrawDescriptorSet(this.meshfish$vertexBuffer, this.meshfish$indexBuffer, drawCommandOffset)
         );
         EXTMeshShader.vkCmdDrawMeshTasksEXT(this.secondaryCommandBuffer(), meshTaskCount(indexCount), Math.max(1, instanceCount), 1);
         ci.cancel();
@@ -139,36 +139,25 @@ public abstract class VulkanRenderPassMixin {
 
         VertexFormat format = this.meshfish$vertexFormat;
         if (meshfish$isScenePipeline()) {
-            if (!meshfish$loggedSceneDraw) {
-                meshfish$loggedSceneDraw = true;
+            if (meshfish$loggedSceneDraws < 12) {
+                meshfish$loggedSceneDraws++;
                 Meshfish.LOGGER.info(
-                    "Meshfish scene draw intercepted: firstVertex={}, vertexCount={}, taskGroups={}, pipeline={}",
+                    "Meshfish scene draw {} intercepted: firstVertex={}, vertexCount={}, taskGroups={}, pipeline={}",
+                    meshfish$loggedSceneDraws,
                     firstVertex,
                     vertexCount,
                     meshTaskCount(vertexCount),
                     this.meshfish$pipelineLocation
                 );
             }
-            MeshfishBuffers.writeDrawCommand(
-                0,
-                0,
-                0,
-                1,
-                firstVertex,
-                vertexCount,
-                null,
-                MeshfishBuffers.DRAW_FLAG_SCENE_BLOCKS,
-                0,
-                0,
-                -1,
-                -1,
-                2
-            );
             meshfish$pushTextureDescriptors();
+            long sceneDescriptorSet = MeshfishBuffers.prepareDrawDescriptorSet(null, null, 0L);
+            MeshfishBuffers.barrierForSceneRead(this.secondaryCommandBuffer());
             MeshfishBuffers.bindDescriptorSet(
                 this.secondaryCommandBuffer(),
                 this.pipeline.pipelineLayout(),
-                MeshfishBuffers.descriptorSets[MeshfishBuffers.getFrameIndex()]
+                sceneDescriptorSet,
+                0
             );
             EXTMeshShader.vkCmdDrawMeshTasksEXT(this.secondaryCommandBuffer(), meshTaskCount(vertexCount), 1, 1);
             ci.cancel();
@@ -179,7 +168,7 @@ public abstract class VulkanRenderPassMixin {
             return;
         }
 
-        MeshfishBuffers.writeDrawCommand(
+        long drawCommandOffset = MeshfishBuffers.writeDrawCommand(
             0,
             0,
             0,
@@ -198,7 +187,7 @@ public abstract class VulkanRenderPassMixin {
         MeshfishBuffers.bindDescriptorSet(
             this.secondaryCommandBuffer(),
             this.pipeline.pipelineLayout(),
-            MeshfishBuffers.prepareDrawDescriptorSet(this.meshfish$vertexBuffer, null)
+            MeshfishBuffers.prepareDrawDescriptorSet(this.meshfish$vertexBuffer, null, drawCommandOffset)
         );
         EXTMeshShader.vkCmdDrawMeshTasksEXT(this.secondaryCommandBuffer(), meshTaskCount(vertexCount), 1, 1);
         ci.cancel();

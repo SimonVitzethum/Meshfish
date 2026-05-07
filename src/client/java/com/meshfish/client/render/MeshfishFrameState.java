@@ -4,6 +4,7 @@ import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.systems.CommandEncoder;
 import com.mojang.blaze3d.systems.RenderSystem;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelTerrainRenderContext;
@@ -65,12 +66,12 @@ public final class MeshfishFrameState {
         }
 
         try (MemoryStack stack = MemoryStack.stackPush()) {
-            ByteBuffer data = stack.calloc(FRAME_UNIFORM_SIZE);
+            ByteBuffer data = stack.calloc(FRAME_UNIFORM_SIZE).order(ByteOrder.nativeOrder());
             synchronized (LOCK) {
                 Matrix4f viewProjection = new Matrix4f();
                 CameraRenderState camera = context.levelState().cameraRenderState;
                 camera.projectionMatrix.mul(camera.viewRotationMatrix, viewProjection);
-                viewProjection.get(data);
+                viewProjection.getTransposed(data);
                 data.position(64);
 
                 for (float value : frustumPlanes) {

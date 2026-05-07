@@ -44,12 +44,15 @@ static const uint MESHFISH_SCENE_HEADER_SIZE = 16u;
 static const uint MESHFISH_MAX_SCENE_BLOCKS = 5400u;
 static const uint MESHFISH_MAX_SCENE_MODELS = 4096u;
 static const uint MESHFISH_MAX_MODEL_QUADS = 64u;
+static const uint MESHFISH_MAX_SCENE_QUADS = 16384u;
 static const uint MESHFISH_SCENE_BLOCK_RECORD_SIZE = 32u;
 static const uint MESHFISH_SCENE_MODEL_RECORD_SIZE = 8u;
 static const uint MESHFISH_SCENE_QUAD_RECORD_SIZE = 96u;
+static const uint MESHFISH_SCENE_PRIMITIVE_RECORD_SIZE = 8u;
 static const uint MESHFISH_SCENE_BLOCKS_OFFSET = MESHFISH_SCENE_HEADER_SIZE;
 static const uint MESHFISH_SCENE_MODELS_OFFSET = MESHFISH_SCENE_BLOCKS_OFFSET + MESHFISH_MAX_SCENE_BLOCKS * MESHFISH_SCENE_BLOCK_RECORD_SIZE;
 static const uint MESHFISH_SCENE_QUADS_OFFSET = MESHFISH_SCENE_MODELS_OFFSET + MESHFISH_MAX_SCENE_MODELS * MESHFISH_SCENE_MODEL_RECORD_SIZE;
+static const uint MESHFISH_SCENE_PRIMITIVES_OFFSET = MESHFISH_SCENE_QUADS_OFFSET + MESHFISH_MAX_SCENE_QUADS * MESHFISH_SCENE_QUAD_RECORD_SIZE;
 
 [[vk::binding(1, 1)]]
 ConstantBuffer<MeshfishFrameUniforms> meshfishFrame;
@@ -133,12 +136,27 @@ float4 projectPosition(float3 position, MeshfishDrawCommand draw)
 
 uint scenePrimitiveCount(MeshfishDrawCommand draw)
 {
-    return readSceneBlockCount() * MESHFISH_MAX_MODEL_QUADS;
+    return readScenePrimitiveCount();
 }
 
 uint readSceneBlockCount()
 {
     return meshfishScene.Load(0u);
+}
+
+uint readScenePrimitiveCount()
+{
+    return meshfishScene.Load(12u);
+}
+
+uint readScenePrimitiveBlock(uint primitiveIndex)
+{
+    return meshfishScene.Load(MESHFISH_SCENE_PRIMITIVES_OFFSET + primitiveIndex * MESHFISH_SCENE_PRIMITIVE_RECORD_SIZE);
+}
+
+uint readScenePrimitiveQuad(uint primitiveIndex)
+{
+    return meshfishScene.Load(MESHFISH_SCENE_PRIMITIVES_OFFSET + primitiveIndex * MESHFISH_SCENE_PRIMITIVE_RECORD_SIZE + 4u);
 }
 
 uint readSceneBlockModel(uint blockIndex)
@@ -213,8 +231,14 @@ void emitScenePrimitive(
     OutputIndices<uint3, 2> triangles,
     MeshfishDrawCommand draw)
 {
-    uint blockIndex = primitiveIndex / MESHFISH_MAX_MODEL_QUADS;
-    uint quadSlot = primitiveIndex - blockIndex * MESHFISH_MAX_MODEL_QUADS;
+    if (primitiveIndex >= readScenePrimitiveCount())
+    {
+        SetMeshOutputCounts(0, 0);
+        return;
+    }
+
+    uint blockIndex = readScenePrimitiveBlock(primitiveIndex);
+    uint quadIndex = readScenePrimitiveQuad(primitiveIndex);
 
     if (blockIndex >= readSceneBlockCount())
     {
@@ -223,16 +247,8 @@ void emitScenePrimitive(
     }
 
     uint modelIndex = readSceneBlockModel(blockIndex);
-    uint quadCount = readSceneModelQuadCount(modelIndex);
-    if (quadSlot >= quadCount)
-    {
-        SetMeshOutputCounts(0, 0);
-        return;
-    }
-
-    uint quadIndex = readSceneModelFirstQuad(modelIndex) + quadSlot;
-    uint face = readSceneQuadFace(quadIndex);
-    if (face < 6u && (readSceneBlockVisibleMask(blockIndex) & (1u << face)) == 0u)
+    if (quadIndex < readSceneModelFirstQuad(modelIndex)
+        || quadIndex >= readSceneModelFirstQuad(modelIndex) + readSceneModelQuadCount(modelIndex))
     {
         SetMeshOutputCounts(0, 0);
         return;
