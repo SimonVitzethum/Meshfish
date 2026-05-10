@@ -32,11 +32,11 @@ if [[ -n "$SLANGC_BIN" ]]; then
 elif [[ -n "$GLSLANG_BIN" ]]; then
     echo "[Meshfish] glslang is available, but it cannot compile the Slang mesh/task stages used by Meshfish." >&2
     echo "[Meshfish] Install shader-slang, set \$SLANGC, or place a local toolchain in .meshfish-tools/slang." >&2
-    exit 0
+    exit 1
 else
     echo "[Meshfish] No shader Slang compiler found. Install shader-slang or set \$SLANGC." >&2
     echo "[Meshfish] Note: the Arch package named 'slang' is the S-Lang scripting language, not shader-slang." >&2
-    exit 0
+    exit 1
 fi
 
 if [[ "$SLANGC_BIN" == "$LOCAL_SLANG_DIR/bin/slangc" && -d "$LOCAL_SLANG_DIR/lib" ]]; then
